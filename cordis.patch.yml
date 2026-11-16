@@ -1,0 +1,7 @@
+# dsh-rss-news-browser-fetch bundle patch.
+# id 必须与插件 export const name 一致。
+
+- insert:
+    - id: rss-news-browser-fetch
+      name: 'dsh-rss-news-browser-fetch'
+      config: {}
