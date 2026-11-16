@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>dsh-rss-news-browser-fetch</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --fg: #1d2129; --muted: #6b7280; --card: #fff;
+    --border: #e5e7eb; --accent: #2563eb; --danger: #dc2626;
+  }
+  html[data-theme="dark"] {
+    --bg: #16181d; --fg: #e5e7eb; --muted: #9ca3af; --card: #1f2229;
+    --border: #33373f; --accent: #3b82f6; --danger: #ef4444;
+  }
+  * { box-sizing: border-box }
+  body { margin: 0; padding: 24px; background: var(--bg); color: var(--fg);
+    font: 14px/1.6 -apple-system, "PingFang SC", "Helvetica Neue", sans-serif; }
+  .wrap { max-width: 640px; margin: 0 auto }
+  h1 { font-size: 17px; margin: 0 0 4px }
+  .sub { color: var(--muted); font-size: 12px; margin-bottom: 20px }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+    padding: 16px; margin-bottom: 16px }
+  .card h2 { font-size: 13px; margin: 0 0 10px; color: var(--muted); font-weight: 600 }
+  .row { display: flex; gap: 8px; align-items: center; margin: 6px 0 }
+  .row .k { color: var(--muted); min-width: 76px; flex-shrink: 0 }
+  .row .v { word-break: break-all; font-family: ui-monospace, Menlo, monospace; font-size: 12px }
+  input[type="text"] { flex: 1; padding: 7px 10px; border: 1px solid var(--border);
+    border-radius: 6px; background: var(--bg); color: var(--fg); font-size: 13px; }
+  input[type="text"]:focus { outline: 2px solid var(--accent); outline-offset: -1px }
+  button { padding: 7px 14px; border: 1px solid var(--border); border-radius: 6px;
+    background: var(--accent); color: #fff; font-size: 13px; cursor: pointer; white-space: nowrap }
+  button.ghost { background: transparent; color: var(--fg) }
+  button.danger { background: var(--danger) }
+  button:disabled { opacity: .5; cursor: not-allowed }
+  .hint { color: var(--muted); font-size: 12px; margin-top: 8px }
+  #toast { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%);
+    background: var(--fg); color: var(--bg); padding: 8px 16px; border-radius: 8px;
+    font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px }
+  .dot.on { background: #16a34a } .dot.off { background: var(--muted) } .dot.paused { background: #d97706 }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>dsh-rss-news-browser-fetch</h1>
+  <div class="sub">专用 Chrome 实例 + CDP 浏览器传输服务 · 懒拉起，无抓取时零开销</div>
+
+  <div class="card">
+    <h2>运行状态</h2>
+    <div class="row"><span class="k">实例</span><span class="v" id="stRun">…</span></div>
+    <div class="row"><span class="k">Chrome</span><span class="v" id="stBin">…</span></div>
+    <div class="row"><span class="k">数据目录</span><span class="v" id="stDir">…</span></div>
+    <div class="row"><span class="k">声明域</span><span class="v" id="stDomains">…</span></div>
+    <div class="row"><span class="k">活动 tab</span><span class="v" id="stTabs">…</span></div>
+    <div class="row"><span class="k">待授权</span><span class="v" id="stAuth">…</span></div>
+    <div class="row" id="resumeRow" style="display:none">
+      <button id="btnResume">重新启用实例</button>
+      <span class="hint">窗口被连续关闭后实例会暂停自动拉起</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>打开 Chrome</h2>
+    <div class="row">
+      <input type="text" id="url" placeholder="https://example.com （留空打开 about:blank）">
+      <button id="btnOpen">打开</button>
+    </div>
+    <div class="hint">在专用实例中打开页面——用于登录、过验证或检查页面。这里的登录态与日常浏览器互相独立。</div>
+  </div>
+
+  <div class="card">
+    <h2>清除所有数据</h2>
+    <div class="row">
+      <button class="danger" id="btnClear">清除所有数据</button>
+    </div>
+    <div class="hint">关闭实例并删除整个数据目录：专用 profile 的 cookie、登录态、缓存、声明域全部清除，下次抓取从零开始。</div>
+  </div>
+</div>
+<div id="toast"></div>
+<script>
+const API = '/dsh-rss-news-browser-fetch/api'
+const $ = (s) => document.querySelector(s)
+
+// 主题跟随宿主
+const applyTheme = (t) => { if (t === 'dark' || t === 'light') document.documentElement.dataset.theme = t }
+applyTheme(new URLSearchParams(location.search).get('theme'))
+window.addEventListener('message', (e) => { if (e.data && e.data.type === 'rnd-theme') applyTheme(e.data.theme) })
+
+function toast(msg) {
+  const el = $('#toast')
+  el.textContent = msg
+  el.style.opacity = '1'
+  clearTimeout(toast._t)
+  toast._t = setTimeout(() => { el.style.opacity = '0' }, 2600)
+}
+
+async function api(path, opts) {
+  const res = await fetch(`${API}${path}`, opts)
+  const j = await res.json().catch(() => ({}))
+  if (!res.ok || j.ok === false) throw new Error(j.error || `HTTP ${res.status}`)
+  return j
+}
+const post = (path, body) => api(path, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body ?? {}) })
+
+async function loadStatus() {
+  try {
+    const s = await api('/status')
+    const run = $('#stRun')
+    if (!s.available) { run.innerHTML = '<span class="dot off"></span>不可用（未找到 Chrome/Edge）' }
+    else if (s.paused) { run.innerHTML = '<span class="dot paused"></span>已暂停（用户连续关闭）' }
+    else if (s.running) { run.innerHTML = '<span class="dot on"></span>运行中' }
+    else { run.innerHTML = '<span class="dot off"></span>未启动（首次抓取时懒拉起）' }
+    $('#stBin').textContent = s.binary || '—'
+    $('#stDir').textContent = s.dataDir || '—'
+    $('#stDomains').textContent = s.domains?.length ? s.domains.join(', ') : '（无）'
+    $('#stTabs').textContent = s.tabs?.length ? s.tabs.join(', ') : '（无）'
+    $('#stAuth').textContent = s.authRequired?.length ? s.authRequired.join(', ') : '（无）'
+    $('#resumeRow').style.display = s.paused ? '' : 'none'
+  } catch (e) {
+    $('#stRun').textContent = `状态不可用：${e.message}`
+  }
+}
+
+$('#btnOpen').onclick = async () => {
+  const btn = $('#btnOpen')
+  btn.disabled = true
+  try {
+    const r = await post('/open', { url: $('#url').value.trim() })
+    toast(`已打开 ${r.result}`)
+    loadStatus()
+  } catch (e) { toast(e.message) }
+  btn.disabled = false
+}
+
+$('#btnClear').onclick = async () => {
+  if (!confirm('确定清除全部数据？\n\n将关闭专用 Chrome 实例，并删除整个数据目录（cookie、登录态、缓存、声明域）。')) return
+  const btn = $('#btnClear')
+  btn.disabled = true
+  try {
+    await post('/clear')
+    toast('已清除所有数据')
+    loadStatus()
+  } catch (e) { toast(e.message) }
+  btn.disabled = false
+}
+
+$('#btnResume').onclick = async () => {
+  try { await post('/resume'); toast('已恢复'); loadStatus() }
+  catch (e) { toast(e.message) }
+}
+
+loadStatus()
+setInterval(loadStatus, 4000)
+</script>
+</body>
+</html>

@@ -13,6 +13,7 @@ import { join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 
 import { BrowserFetchService } from './service.js'
+import { mountUi } from './ui.js'
 
 export { BrowserFetchService }
 export type { BrowserFetchInit, BrowserFetchResult } from './service.js'
@@ -33,11 +34,21 @@ function resolveDataDir(): string {
 
 export function apply(ctx: Context) {
   const log = ctx.logger('browser-fetch')
+  let svc: BrowserFetchService | undefined
   try {
-    new BrowserFetchService(ctx, { dataDir: resolveDataDir(), log })
+    svc = new BrowserFetchService(ctx, { dataDir: resolveDataDir(), log })
     log.info('browserFetch service registered (lazy: chrome spawns on first fetch)')
   } catch (e) {
     // 非完整 cordis 宿主（stub ctx/极简宿主）——服务注册失败不拖垮宿主
     log.warn(`browserFetch service unavailable: ${(e as Error).message}`)
+    return
   }
+  // 设置页走可选注入：headless/无 webServer 的宿主照样只提供服务
+  const service = svc
+  ctx.inject(['webServer'], (c) => {
+    const ws = (c as unknown as { webServer?: Parameters<typeof mountUi>[0] }).webServer
+    if (!ws) return
+    const disposeUi = mountUi(ws, service, log)
+    c.effect(() => disposeUi) // 挂注入作用域上：webServer 消失时卸载，重注入不重复挂路由
+  })
 }

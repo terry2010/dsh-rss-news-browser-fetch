@@ -27,6 +27,11 @@ export declare class ChromeInstance {
     });
     get available(): boolean;
     get running(): boolean;
+    get binaryPath(): string | undefined;
+    get profile(): string;
+    private coldStart;
+    /** 本次 ensure 是否触发了冷启动（消费一次——工位路径据此最小化窗口，用户路径据此恢复窗口）。 */
+    consumeColdStart(): boolean;
     /** 懒拉起：未启动则拉起并等待就绪；已暂停/无浏览器则抛错。 */
     ensure(firstUrl?: string): Promise<InstanceInfo>;
     private spawn;

@@ -57,6 +57,12 @@ export class ChromeInstance {
 
   get available(): boolean { return !!this.binary }
   get running(): boolean { return !!this.info && !this.paused }
+  get binaryPath(): string | undefined { return this.binary }
+  get profile(): string { return this.profileDir }
+
+  private coldStart = false
+  /** 本次 ensure 是否触发了冷启动（消费一次——工位路径据此最小化窗口，用户路径据此恢复窗口）。 */
+  consumeColdStart(): boolean { const c = this.coldStart; this.coldStart = false; return c }
 
   /** 懒拉起：未启动则拉起并等待就绪；已暂停/无浏览器则抛错。 */
   async ensure(firstUrl?: string): Promise<InstanceInfo> {
@@ -78,6 +84,7 @@ export class ChromeInstance {
       '--disable-features=Translate',
       '--disable-session-crashed-bubble',
       '--hide-crash-restore-bubble',
+      '--silent-launch', // macOS：拉起不抢前台焦点（worker 路径随后 CDP 最小化，用户路径照常显示）
       firstUrl ?? 'about:blank',
     ]
     this.ourKill = false
@@ -93,6 +100,7 @@ export class ChromeInstance {
         if (j.webSocketDebuggerUrl) {
           this.info = { port, httpBase: `http://127.0.0.1:${port}`, browserWsUrl: j.webSocketDebuggerUrl }
           this.userCloses = 0
+          this.coldStart = true
           this.log.info(`chrome instance ready on 127.0.0.1:${port} (profile ${this.profileDir})`)
           return this.info
         }

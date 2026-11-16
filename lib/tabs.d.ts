@@ -17,9 +17,14 @@ export declare class TabPool {
     private tabs;
     private readonly log;
     constructor(inst: ChromeInstance, log: LogSink);
+    /** firstUrl 只在冷启动生效——窗口首 tab 直接开目标页，不留 about:blank 空壳。 */
     private conn;
+    /** 窗口显隐：worker 冷启动最小化（无声基建），用户主动操作恢复前台。best-effort，失败不阻塞。 */
+    private setWindowState;
     /** 取/建某域的轻量页 tab，返回 attach 好的 sessionId。 */
     ensure(domain: string): Promise<PageTab>;
+    /** 短轮询等一个满足条件的 page target 出现（冷启动首个 tab 正在导航时用）。 */
+    private waitForTarget;
     private waitLoaded;
     /** tab 漂出预期域 → navigate 回轻量页（watchdog 调用）。 */
     resetIfDrifted(domain: string): Promise<void>;
@@ -31,6 +36,8 @@ export declare class TabPool {
     }>;
     /** 激活 tab 到前台（授权态：用户登录/过验证）。 */
     activate(domain: string): Promise<void>;
+    /** 用户主动开一个前台页面（设置页「打开 Chrome」/授权 URL）——不走域白名单，用户的窗口用户作主。 */
+    openPage(url: string): Promise<void>;
     /** 页面内 fetch：返回值交给调用方（adapter）判定非 JSON/挑战页。 */
     pageFetch(domain: string, url: string, init?: RequestInit): Promise<{
         status: number;

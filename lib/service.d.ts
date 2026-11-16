@@ -29,6 +29,7 @@ export interface BrowserFetchResult {
 export declare class BrowserFetchService extends Service {
     readonly apiVersion = 1;
     private readonly log;
+    private readonly dataDir;
     private readonly inst;
     private readonly pool;
     private readonly callers;
@@ -49,10 +50,14 @@ export declare class BrowserFetchService extends Service {
     authRequired(domain: string): boolean;
     /** adapter 判定登录墙/挑战页后调用；恢复后再 markAuthRequired(domain,false)。 */
     markAuthRequired(domain: string, on?: boolean): void;
-    /** 把该域 tab 顶到前台让用户登录/过验证；返回是否成功激活。 */
+    /** 把该域 tab 顶到前台让用户登录/过验证；返回是否成功激活。给了 url 就直接开那个授权页。 */
     openForAuth(domain: string, url?: string): Promise<boolean>;
     /** 用户连关后手动恢复实例。 */
     resume(): void;
+    /** 设置页「打开 Chrome」：实例未起则带 URL 冷启动，已起则前台开 tab。空值开 about:blank。 */
+    openWindow(url?: string): Promise<string>;
+    /** 设置页「清除所有数据」：杀实例 + 删整个数据目录（profile cookie/缓存/声明状态全清）。 */
+    clearAllData(): Promise<void>;
     status(): {
         available: boolean;
         running: boolean;
@@ -60,6 +65,8 @@ export declare class BrowserFetchService extends Service {
         domains: string[];
         tabs: string[];
         authRequired: string[];
+        binary?: string;
+        dataDir: string;
     };
     dispose(): Promise<void>;
 }

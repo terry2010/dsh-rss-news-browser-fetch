@@ -9,6 +9,8 @@
  * init 经 Runtime.evaluate 序列化，只支持 JSON-safe 子集（method/headers/body/credentials）。
  */
 
+import { rm } from 'node:fs/promises'
+
 import { Context, Service } from '@deepseek-ai/cordis'
 
 import { ChromeInstance } from './instance.js'
@@ -38,6 +40,7 @@ export class BrowserFetchService extends Service {
   readonly apiVersion = 1
 
   private readonly log: LogSink
+  private readonly dataDir: string
   private readonly inst: ChromeInstance
   private readonly pool: TabPool
   private readonly callers = new Map<string, string[]>() // caller → domains（审计）
@@ -48,6 +51,7 @@ export class BrowserFetchService extends Service {
   constructor(ctx: Context, opts: { dataDir: string; log: LogSink }) {
     super(ctx, 'browserFetch')
     this.log = opts.log
+    this.dataDir = opts.dataDir
     this.inst = new ChromeInstance({ dataDir: opts.dataDir, log: opts.log })
     this.pool = new TabPool(this.inst, opts.log)
     // 巡检：5min 一轮，修复幂等；用 ctx.effect 挂卸载清理
@@ -93,11 +97,11 @@ export class BrowserFetchService extends Service {
     else this.authDomains.delete(d)
   }
 
-  /** 把该域 tab 顶到前台让用户登录/过验证；返回是否成功激活。 */
+  /** 把该域 tab 顶到前台让用户登录/过验证；返回是否成功激活。给了 url 就直接开那个授权页。 */
   async openForAuth(domain: string, url?: string): Promise<boolean> {
     try {
-      await this.inst.ensure(url ?? lightPageFor(domain))
-      await this.pool.activate(domain)
+      if (url) { this.assertAllowed(domain, url); await this.pool.openPage(url) }
+      else await this.pool.activate(domain)
       return true
     } catch (e) {
       this.log.warn(`openForAuth(${domain}) failed: ${(e as Error).message}`)
@@ -110,7 +114,26 @@ export class BrowserFetchService extends Service {
     this.inst.resume()
   }
 
-  status(): { available: boolean; running: boolean; paused: boolean; domains: string[]; tabs: string[]; authRequired: string[] } {
+  /** 设置页「打开 Chrome」：实例未起则带 URL 冷启动，已起则前台开 tab。空值开 about:blank。 */
+  async openWindow(url?: string): Promise<string> {
+    const target = sanitizeOpenUrl(url)
+    if (this.inst.paused) this.inst.resume()
+    await this.pool.openPage(target)
+    return target
+  }
+
+  /** 设置页「清除所有数据」：杀实例 + 删整个数据目录（profile cookie/缓存/声明状态全清）。 */
+  async clearAllData(): Promise<void> {
+    await this.pool.close()
+    await this.inst.stop()
+    this.callers.clear()
+    this.declared.clear()
+    this.authDomains.clear()
+    await rm(this.dataDir, { recursive: true, force: true })
+    this.log.info(`all browser-fetch data cleared (${this.dataDir})`)
+  }
+
+  status(): { available: boolean; running: boolean; paused: boolean; domains: string[]; tabs: string[]; authRequired: string[]; binary?: string; dataDir: string } {
     return {
       available: this.inst.available,
       running: this.inst.running,
@@ -118,6 +141,8 @@ export class BrowserFetchService extends Service {
       domains: [...this.declared],
       tabs: this.pool.domains(),
       authRequired: [...this.authDomains],
+      binary: this.inst.binaryPath,
+      dataDir: this.dataDir,
     }
   }
 
@@ -126,4 +151,13 @@ export class BrowserFetchService extends Service {
     await this.pool.close()
     await this.inst.stop()
   }
+}
+
+/** 设置页 URL 输入消毒：空 → about:blank；只放行 http(s)/about:*；其余协议（javascript:/file:/data:）拒绝。 */
+function sanitizeOpenUrl(url?: string): string {
+  const u = (url ?? '').trim()
+  if (!u) return 'about:blank'
+  if (u === 'about:blank') return u
+  if (/^https?:\/\//i.test(u)) return u
+  throw new Error(`只允许 http(s) 或 about:blank：${u}`)
 }
