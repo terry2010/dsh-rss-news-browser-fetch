@@ -67,6 +67,11 @@ export function apply(ctx: Context) {
 - 极简 CDP client：Node ≥22.18 自带 WebSocket，零依赖
 - 已知消费方：[dsh-rss-news-flash-kuaixun](https://github.com/terry2010/dsh-rss-news-flash-kuaixun)——node fetch 优先、失败自动回落浏览器通道
 
+## 相关插件
+
+- **[dsh-rss-news-daily](https://github.com/terry2010/dsh-rss-news-daily)** —— RSS 订阅 + AI 每日精选/时段快报 + 侧栏新闻阅读器
+- **[dsh-rss-news-flash-kuaixun](https://github.com/terry2010/dsh-rss-news-flash-kuaixun)** —— 实时财经快讯伴随插件：已知消费方，node fetch 优先、失败自动回落本服务
+
 ## License
 
 Apache-2.0 — 见 [LICENSE](./LICENSE)

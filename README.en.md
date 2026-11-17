@@ -67,6 +67,11 @@ Service name: `browserFetch` · apiVersion: 1
 - Minimal dependency-free CDP client on Node's built-in WebSocket (Node ≥ 22.18)
 - Known consumer: [dsh-rss-news-flash-kuaixun](https://github.com/terry2010/dsh-rss-news-flash-kuaixun) — node-first fetch with automatic browser fallback
 
+## Related plugins
+
+- **[dsh-rss-news-daily](https://github.com/terry2010/dsh-rss-news-daily)** — RSS subscriptions + AI daily digest/period briefings + sidebar news reader
+- **[dsh-rss-news-flash-kuaixun](https://github.com/terry2010/dsh-rss-news-flash-kuaixun)** — real-time finance flash-news companion (known consumer): node-first fetch, automatic fallback to this service
+
 ## License
 
 Apache-2.0 — see [LICENSE](./LICENSE)
