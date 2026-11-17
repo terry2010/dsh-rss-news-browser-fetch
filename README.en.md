@@ -1,8 +1,15 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/terry2010/dsh-rss-news-browser-fetch/master/assets/banner.svg" alt="browserFetch" width="760">
+</p>
+
 # dsh-rss-news-browser-fetch
 
 > Dedicated Chrome instance + CDP (Chrome DevTools Protocol) browser-fetch service for dsh plugins — real browser fingerprint, persistent cookies, and same-origin page fetch for scraping sources that block Node.js requests.
 
 [中文](./README.md) | English
+
+[![npm version](https://img.shields.io/npm/v/dsh-rss-news-browser-fetch)](https://www.npmjs.com/package/dsh-rss-news-browser-fetch)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
 `browserFetch` is an infrastructure **service plugin** for the dsh plugin ecosystem. It performs no scraping business itself — it gives *other* plugins a "fetch inside a real browser page" capability, used as an automatic fallback when a source's WAF/anti-bot layer blocks plain Node `fetch`.
 

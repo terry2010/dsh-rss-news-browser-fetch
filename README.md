@@ -1,8 +1,15 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/terry2010/dsh-rss-news-browser-fetch/master/assets/banner.svg" alt="browserFetch" width="760">
+</p>
+
 # dsh-rss-news-browser-fetch
 
 > 「浏览器传输」——dsh 基建服务插件：专用 Chrome 实例 + CDP（Chrome DevTools Protocol），为其他插件提供真浏览器级 fetch（真实指纹、持久 cookie、同源页面内取数），专治对 Node 请求做风控的数据源。
 
 中文 | [English](./README.en.md)
+
+[![npm version](https://img.shields.io/npm/v/dsh-rss-news-browser-fetch)](https://www.npmjs.com/package/dsh-rss-news-browser-fetch)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
 `browserFetch` 是 dsh 插件生态的**服务插件**——自身不做任何抓取业务，只向其他插件提供「在真实浏览器页面里执行 fetch」的能力，作为源端 WAF/反爬拦截 node fetch 时的自动兜底通道。零运行时依赖、无 Selenium/Puppeteer。
 
