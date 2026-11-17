@@ -48,12 +48,16 @@ export class ChromeInstance {
   private readonly profileDir: string
   private readonly log: LogSink
 
-  constructor(opts: { dataDir: string; log: LogSink }) {
+  constructor(opts: { dataDir: string; log: LogSink; proxyUrl?: () => string | undefined }) {
     this.log = opts.log
+    this.proxyUrl = opts.proxyUrl
     this.profileDir = join(opts.dataDir, 'chrome-profile')
     this.binary = locateBrowser()
     if (!this.binary) this.log.warn('no Chromium-based browser found; browserFetch disabled')
   }
+
+  /** 取值函数：每次冷启动重读——改代理后下次拉起即生效（进程级参数，运行中不改） */
+  private readonly proxyUrl?: () => string | undefined
 
   get available(): boolean { return !!this.binary }
   get running(): boolean { return !!this.info && !this.paused }
@@ -87,6 +91,8 @@ export class ChromeInstance {
       '--silent-launch', // macOS：拉起不抢前台焦点（worker 路径随后 CDP 最小化，用户路径照常显示）
       firstUrl ?? 'about:blank',
     ]
+    const proxy = this.proxyUrl?.()
+    if (proxy) args.splice(args.length - 1, 0, `--proxy-server=${proxy}`)
     this.ourKill = false
     const proc = spawn(this.binary!, args, { detached: true, stdio: 'ignore' })
     this.proc = proc

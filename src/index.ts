@@ -9,6 +9,7 @@
  * 本插件不做任何抓取业务——它是基建服务插件，只提供「真浏览器 fetch」能力。
  */
 
+import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 
@@ -32,11 +33,20 @@ function resolveDataDir(): string {
   return join(process.env.HOME || '.', '.dsh', 'rss-news-browser-fetch')
 }
 
+/** 复用主插件全局代理（prefs.proxyUrl → Chrome --proxy-server）；读不到就当没配。 */
+const readMainProxy = (dataDir: string) => (): string | undefined => {
+  try {
+    const j = JSON.parse(readFileSync(join(dataDir, '..', 'rss-news-daily', 'prefs.json'), 'utf8')) as { proxyUrl?: string }
+    return j.proxyUrl?.trim() || undefined
+  } catch { return undefined }
+}
+
 export function apply(ctx: Context) {
   const log = ctx.logger('browser-fetch')
   let svc: BrowserFetchService | undefined
   try {
-    svc = new BrowserFetchService(ctx, { dataDir: resolveDataDir(), log })
+    const dataDir = resolveDataDir()
+    svc = new BrowserFetchService(ctx, { dataDir, log, proxyUrl: readMainProxy(dataDir) })
     log.info('browserFetch service registered (lazy: chrome spawns on first fetch)')
   } catch (e) {
     // 非完整 cordis 宿主（stub ctx/极简宿主）——服务注册失败不拖垮宿主

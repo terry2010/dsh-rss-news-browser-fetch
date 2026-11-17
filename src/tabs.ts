@@ -175,6 +175,33 @@ export class TabPool {
     return { status: v.status, body: v.body ?? '' }
   }
 
+  /**
+   * 渲染档：域 tab 真导航到 url → 等 readyState=complete + waitMs 稳定 →
+   * 取 outerHTML → 导航回轻量页（tab 是域的 fetch origin，不还给它就漂移了）。
+   * 挑战页 JS 在导航里自然跑完（含 reload 链），拿到的 DOM 是渲染后的。
+   */
+  async renderPage(domain: string, url: string, opts?: { waitMs?: number }): Promise<{ status: number; html: string; url: string }> {
+    const tab = await this.ensure(domain)
+    const { cdp } = await this.conn()
+    await cdp.call('Page.enable', {}, tab.sessionId).catch(() => {})
+    await cdp.call('Page.navigate', { url }, tab.sessionId)
+    const deadline = Date.now() + 25_000
+    let ready = false
+    while (Date.now() < deadline) {
+      const { result } = await this.evalRaw<string>(tab.sessionId, 'document.readyState').catch(() => ({ result: undefined }))
+      if (result?.value === 'complete') { ready = true; break }
+      await new Promise((r) => setTimeout(r, 500))
+    }
+    if (!ready) this.log.info(`renderPage ${domain}: readyState wait timed out, extracting anyway`)
+    await new Promise((r) => setTimeout(r, Math.min(Math.max(opts?.waitMs ?? 1500, 0), 10_000)))
+    const { result } = await this.evalRaw<unknown>(tab.sessionId, 'JSON.stringify({u: location.href, h: document.documentElement.outerHTML})')
+    let html = '', finalUrl = url
+    try { const v = JSON.parse(String(result?.value ?? '{}')) as { u?: string; h?: string }; html = v.h ?? ''; finalUrl = v.u ?? url } catch { /* 解析失败保持空 */ }
+    await cdp.call('Page.navigate', { url: tab.url }, tab.sessionId).catch((e) =>
+      this.log.info(`renderPage restore light page failed: ${(e as Error).message}`))
+    return { status: 200, html, url: finalUrl }
+  }
+
   /** 域→tab 清单（watchdog/状态展示用）。 */
   domains(): string[] { return [...this.tabs.keys()] }
 

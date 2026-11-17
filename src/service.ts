@@ -36,8 +36,15 @@ export interface BrowserFetchResult {
   body: string
 }
 
+/** 渲染抓取结果：导航到真实页面后的 outerHTML（挑战页/SPA 用），url=落地后地址。 */
+export interface RenderHtmlResult {
+  status: number
+  html: string
+  url: string
+}
+
 export class BrowserFetchService extends Service {
-  readonly apiVersion = 1
+  readonly apiVersion = 2
 
   private readonly log: LogSink
   private readonly dataDir: string
@@ -48,11 +55,11 @@ export class BrowserFetchService extends Service {
   private readonly authDomains = new Set<string>()       // auth-required 标记
   private sweepTimer?: ReturnType<typeof setInterval>
 
-  constructor(ctx: Context, opts: { dataDir: string; log: LogSink }) {
+  constructor(ctx: Context, opts: { dataDir: string; log: LogSink; proxyUrl?: () => string | undefined }) {
     super(ctx, 'browserFetch')
     this.log = opts.log
     this.dataDir = opts.dataDir
-    this.inst = new ChromeInstance({ dataDir: opts.dataDir, log: opts.log })
+    this.inst = new ChromeInstance({ dataDir: opts.dataDir, log: opts.log, proxyUrl: opts.proxyUrl })
     this.pool = new TabPool(this.inst, opts.log)
     // 巡检：5min 一轮，修复幂等；用 ctx.effect 挂卸载清理。
     // auth-required 域跳过漂移重置——用户可能正在 OAuth/SSO 跨域登录流程中，
@@ -79,6 +86,16 @@ export class BrowserFetchService extends Service {
     this.assertAllowed(domain, url)
     const r = await this.pool.pageFetch(domain, url, init)
     return { status: r.status, body: r.body }
+  }
+
+  /**
+   * 渲染档抓取：在域 tab 里真导航到 url，等 readyState=complete + waitMs 稳定后
+   * 返回 outerHTML。与 fetch 同一域白名单；不暴露裸 evaluate——返回值只有 DOM 文本。
+   * JS 挑战页/SPA 专用档（node fetch 拿到空壳或验证页时升级上来）。
+   */
+  async renderHtml(domain: string, url: string, opts?: { waitMs?: number }): Promise<RenderHtmlResult> {
+    this.assertAllowed(domain, url)
+    return this.pool.renderPage(domain, url, opts)
   }
 
   /** 某域当前是否需要用户授权（登录墙/验证码）——adapter 置位，源包据此标源状态。 */
