@@ -42,7 +42,7 @@ export declare class BrowserFetchService extends Service {
     });
     /** 调用方先声明域——只放行声明过的域（及子域）。 */
     declareDomains(caller: string, domains: string[]): void;
-    /** url 的 hostname 必须是已声明域或其子域——白名单唯一防线。 */
+    /** url 的 hostname 必须精确等于已声明域——白名单唯一防线（纯函数实现见文件尾，导出供测试）。 */
     private assertAllowed;
     /** 域的轻量同源页内执行 fetch。实例未启动时懒拉起。 */
     fetch(domain: string, url: string, init?: BrowserFetchInit): Promise<BrowserFetchResult>;
@@ -70,4 +70,10 @@ export declare class BrowserFetchService extends Service {
     };
     dispose(): Promise<void>;
 }
+/** 域白名单校验：domain 须先声明；url 的 host 须精确等于声明域。
+ *  页面 origin 就是 domain 本身——子域 fetch 本来就过不了 CORS，放行只会把
+ *  「清晰报错」换成「莫名 CORS 失败」。 */
+export declare function checkAllowedUrl(declared: ReadonlySet<string>, domain: string, url: string): void;
+/** 设置页 URL 输入消毒：空 → about:blank；只放行 http(s)/about:*；其余协议（javascript:/file:/data:）拒绝。 */
+export declare function sanitizeOpenUrl(url?: string): string;
 //# sourceMappingURL=service.d.ts.map

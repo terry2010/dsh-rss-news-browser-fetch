@@ -91,7 +91,7 @@ export class ChromeInstance {
     const proc = spawn(this.binary!, args, { detached: true, stdio: 'ignore' })
     this.proc = proc
     proc.unref()
-    proc.on('exit', () => this.onExit())
+    proc.on('exit', (code, signal) => this.onExit(code, signal))
     const deadline = Date.now() + READY_TIMEOUT_MS
     for (;;) {
       try {
@@ -114,11 +114,19 @@ export class ChromeInstance {
   }
 
   /** 用户关了实例/窗口：自动重拉，连关 ≥3 转已暂停（不再自动拉起）。 */
-  private onExit(): void {
+  private onExit(code: number | null, signal: NodeJS.Signals | null): void {
     const wasOurKill = this.ourKill
     this.info = undefined
     this.proc = undefined
     if (wasOurKill) return
+    // 崩溃不是用户意愿——不消耗 userCloses 额度（崩溃信号：SEGV/BUS/ABRT/ILL/FPE）；
+    // 干净退出（code 0）与终止信号（TERM/HUP/INT/KILL，用户或系统关机）才计一次用户关闭
+    const crash = (code !== 0 && code !== null)
+      || (signal !== null && ['SIGSEGV', 'SIGBUS', 'SIGABRT', 'SIGILL', 'SIGFPE'].includes(signal))
+    if (crash) {
+      this.log.warn(`chrome instance crashed (code ${code}, signal ${signal}); will respawn on next fetch`)
+      return
+    }
     this.userCloses += 1
     if (this.userCloses >= USER_CLOSE_LIMIT) {
       this.paused = true

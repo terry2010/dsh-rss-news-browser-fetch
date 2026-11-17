@@ -25,7 +25,7 @@
     "chrome",
     "fetch"
   ],
-  "license": "MIT",
+  "license": "Apache-2.0",
   "engines": {
     "node": ">=22.18"
   },
@@ -40,6 +40,6 @@
   "scripts": {
     "build": "tsc -p tsconfig.json && node scripts/copy-assets.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "npm run build"
+    "test": "npm run build && node --test test/*.test.mjs"
   }
 }

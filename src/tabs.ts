@@ -80,6 +80,13 @@ export class TabPool {
     }
     const { sessionId } = await cdp.call<{ sessionId: string }>('Target.attachToTarget', { targetId: target.targetId, flatten: true })
     const tab: PageTab = { targetId: target.targetId, sessionId, url: target.url }
+    // 轻量页加载失败会停在 chrome-error://（opaque origin，页面 fetch 必挂且不自愈）——
+    // origin 校验不属目标域时回退到域根页兜底
+    const { result } = await this.evalRaw<unknown>(sessionId, 'location.origin')
+    const host = safeUrl(String(result?.value ?? ''))?.hostname
+    if (host !== domain) {
+      await cdp.call('Page.navigate', { url: `https://${domain}/` }, sessionId).catch(() => {})
+    }
     this.tabs.set(domain, tab)
     return tab
   }
@@ -171,8 +178,8 @@ export class TabPool {
   /** 域→tab 清单（watchdog/状态展示用）。 */
   domains(): string[] { return [...this.tabs.keys()] }
 
-  /** 巡检：实例活着、tab 在、URL 没漂。 */
-  async sweep(): Promise<void> {
+  /** 巡检：实例活着、tab 在、URL 没漂。skipDrift 命中的域跳过漂移重置（授权登录中）。 */
+  async sweep(skipDrift?: (domain: string) => boolean): Promise<void> {
     if (!this.inst.running) return
     try {
       const { cdp } = await this.conn()
@@ -181,7 +188,10 @@ export class TabPool {
       for (const [domain, tab] of [...this.tabs]) {
         if (!alive.has(tab.targetId)) this.tabs.delete(domain) // 用户关了 tab → 下次 ensure 重建
       }
-      for (const domain of this.tabs.keys()) await this.resetIfDrifted(domain)
+      for (const domain of this.tabs.keys()) {
+        if (skipDrift?.(domain)) continue
+        await this.resetIfDrifted(domain)
+      }
     } catch (e) {
       this.log.warn(`watchdog sweep failed: ${(e as Error).message}`)
       if (this.cdp?.closed) { this.cdp = undefined; this.tabs.clear() }

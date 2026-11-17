@@ -54,8 +54,10 @@ export class BrowserFetchService extends Service {
     this.dataDir = opts.dataDir
     this.inst = new ChromeInstance({ dataDir: opts.dataDir, log: opts.log })
     this.pool = new TabPool(this.inst, opts.log)
-    // 巡检：5min 一轮，修复幂等；用 ctx.effect 挂卸载清理
-    this.sweepTimer = setInterval(() => void this.pool.sweep(), 5 * 60_000)
+    // 巡检：5min 一轮，修复幂等；用 ctx.effect 挂卸载清理。
+    // auth-required 域跳过漂移重置——用户可能正在 OAuth/SSO 跨域登录流程中，
+    // 此时把 tab 拽回轻量页会直接打断授权。
+    this.sweepTimer = setInterval(() => void this.pool.sweep((d) => this.authDomains.has(d)), 5 * 60_000)
     this.sweepTimer.unref?.()
     ctx.effect(() => () => this.dispose(), 'browser-fetch dispose')
   }
@@ -67,15 +69,9 @@ export class BrowserFetchService extends Service {
     for (const d of clean) this.declared.add(d)
   }
 
-  /** url 的 hostname 必须是已声明域或其子域——白名单唯一防线。 */
+  /** url 的 hostname 必须精确等于已声明域——白名单唯一防线（纯函数实现见文件尾，导出供测试）。 */
   private assertAllowed(domain: string, url: string): void {
-    let host = ''
-    try { host = new URL(url).hostname.toLowerCase() } catch { throw new Error(`browserFetch: bad url ${url}`) }
-    const d = domain.toLowerCase()
-    if (!this.declared.has(d)) throw new Error(`browserFetch: domain "${domain}" not declared (call declareDomains first)`)
-    if (host !== d && !host.endsWith(`.${d}`)) {
-      throw new Error(`browserFetch: url host "${host}" is outside declared domain "${d}"`)
-    }
+    checkAllowedUrl(this.declared, domain, url)
   }
 
   /** 域的轻量同源页内执行 fetch。实例未启动时懒拉起。 */
@@ -153,8 +149,21 @@ export class BrowserFetchService extends Service {
   }
 }
 
+/** 域白名单校验：domain 须先声明；url 的 host 须精确等于声明域。
+ *  页面 origin 就是 domain 本身——子域 fetch 本来就过不了 CORS，放行只会把
+ *  「清晰报错」换成「莫名 CORS 失败」。 */
+export function checkAllowedUrl(declared: ReadonlySet<string>, domain: string, url: string): void {
+  let host = ''
+  try { host = new URL(url).hostname.toLowerCase() } catch { throw new Error(`browserFetch: bad url ${url}`) }
+  const d = domain.toLowerCase()
+  if (!declared.has(d)) throw new Error(`browserFetch: domain "${domain}" not declared (call declareDomains first)`)
+  if (host !== d) {
+    throw new Error(`browserFetch: url host "${host}" != declared domain "${d}" (declare the API host itself; page fetch is same-origin only)`)
+  }
+}
+
 /** 设置页 URL 输入消毒：空 → about:blank；只放行 http(s)/about:*；其余协议（javascript:/file:/data:）拒绝。 */
-function sanitizeOpenUrl(url?: string): string {
+export function sanitizeOpenUrl(url?: string): string {
   const u = (url ?? '').trim()
   if (!u) return 'about:blank'
   if (u === 'about:blank') return u

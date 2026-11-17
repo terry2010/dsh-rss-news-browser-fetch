@@ -45,8 +45,8 @@ export declare class TabPool {
     }>;
     /** 域→tab 清单（watchdog/状态展示用）。 */
     domains(): string[];
-    /** 巡检：实例活着、tab 在、URL 没漂。 */
-    sweep(): Promise<void>;
+    /** 巡检：实例活着、tab 在、URL 没漂。skipDrift 命中的域跳过漂移重置（授权登录中）。 */
+    sweep(skipDrift?: (domain: string) => boolean): Promise<void>;
     close(): Promise<void>;
 }
 //# sourceMappingURL=tabs.d.ts.map
