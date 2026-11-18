@@ -30,8 +30,10 @@ Some data endpoints respond unreliably to non-browser clients — a plugin's Nod
 ## Install
 
 ```bash
-dsh plugin --profile <profile-name> add dsh-rss-news-browser-fetch
+dsh plugin --profile desktop add dsh-rss-news-browser-fetch
 ```
+
+(Most users' profile name is `desktop`; if you renamed yours, substitute your own profile name.)
 
 Requires a Chromium-family browser (auto-detected: Google Chrome / Microsoft Edge / Chromium / Brave on macOS, Windows, Linux).
 

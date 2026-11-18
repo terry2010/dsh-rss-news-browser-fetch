@@ -30,8 +30,10 @@
 ## 安装
 
 ```bash
-dsh plugin --profile <你的profile名> add dsh-rss-news-browser-fetch
+dsh plugin --profile desktop add dsh-rss-news-browser-fetch
 ```
+
+（多数用户的 profile 名就是 `desktop`；改过名字的换成自己的 profile 名。）
 
 需要一个 Chromium 系浏览器（自动探测：Chrome / Edge / Chromium / Brave，支持 macOS / Windows / Linux）。
 
