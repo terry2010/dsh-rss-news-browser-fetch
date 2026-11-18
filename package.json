@@ -10,6 +10,7 @@
   },
   "files": [
     "lib",
+    "web",
     "cordis.patch.yml",
     "README.md",
     "README.en.md"
@@ -57,5 +58,6 @@
     "build": "tsc -p tsconfig.json && node scripts/copy-assets.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "npm run build && node --test test/*.test.mjs"
-  }
+  },
+  "author": "terry2010 <jstel@126.com>"
 }
