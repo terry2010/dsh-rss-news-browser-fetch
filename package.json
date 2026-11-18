@@ -1,6 +1,6 @@
 {
   "name": "dsh-rss-news-browser-fetch",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "dsh plugin: browserFetch service — dedicated Chrome instance + CDP; run requests inside the user's real browser session (persistent cookies, same-origin fetch) as a compatibility fallback for sources that respond unreliably to Node fetch.",
   "type": "module",
   "main": "lib/index.js",
