@@ -3,6 +3,20 @@
 import { existsSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 
+/** win32 候选：env 缺失时拼出 'undefined\...' 字符串没意义，先过滤再进候选表。 */
+function win32Candidates(): string[] {
+  const pf = process.env['ProgramFiles']
+  const pf86 = process.env['ProgramFiles(x86)']
+  const lad = process.env.LOCALAPPDATA
+  return [
+    pf && `${pf}\\Google\\Chrome\\Application\\chrome.exe`,
+    pf86 && `${pf86}\\Google\\Chrome\\Application\\chrome.exe`,
+    lad && `${lad}\\Google\\Chrome\\Application\\chrome.exe`,
+    pf86 && `${pf86}\\Microsoft\\Edge\\Application\\msedge.exe`,
+    pf && `${pf}\\Microsoft\\Edge\\Application\\msedge.exe`,
+  ].filter((p): p is string => typeof p === 'string' && p.length > 0)
+}
+
 const CANDIDATES: Record<string, string[]> = {
   darwin: [
     '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
@@ -17,13 +31,7 @@ const CANDIDATES: Record<string, string[]> = {
     '/usr/bin/chromium',
     '/usr/bin/chromium-browser',
   ],
-  win32: [
-    `${process.env['ProgramFiles']}\\Google\\Chrome\\Application\\chrome.exe`,
-    `${process.env['ProgramFiles(x86)']}\\Google\\Chrome\\Application\\chrome.exe`,
-    `${process.env.LOCALAPPDATA}\\Google\\Chrome\\Application\\chrome.exe`,
-    `${process.env['ProgramFiles(x86)']}\\Microsoft\\Edge\\Application\\msedge.exe`,
-    `${process.env['ProgramFiles']}\\Microsoft\\Edge\\Application\\msedge.exe`,
-  ],
+  win32: win32Candidates(),
 }
 
 /** PATH 查找（which/where 兜底）——只查 PATH 里可能出现的短名 */

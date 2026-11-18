@@ -1,6 +1,6 @@
 {
   "name": "dsh-rss-news-browser-fetch",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "dsh plugin: browserFetch service — dedicated Chrome instance + CDP for real-browser-fingerprint, cookie-true, same-origin page fetch; automatic fallback for sources that block Node fetch.",
   "type": "module",
   "main": "lib/index.js",

@@ -57,13 +57,16 @@ export function apply(ctx: Context) {
 | `openForAuth(domain, url?)` | Bring the domain's tab forward for user login/verification |
 | `resume()` / `status()` | Resume a paused instance / query instance status |
 
-Service name: `browserFetch` · apiVersion: 1
+Service name: `browserFetch` · apiVersion: 2
 
 ## Internals
 
 - cordis entry id: `rss-news-browser-fetch`; provided service: `browserFetch`
-- Data dir: `~/.dsh/data/rss-news-browser-fetch/` (hosts the dedicated Chrome profile)
+- Data dir: `~/.dsh/rss-news-browser-fetch/` (hosts the dedicated Chrome profile; under `$DSH_HOME/data/` when `DSH_HOME` is set)
+- Instance state `instance.json`: records pid + debug port. If the host crashes or is killed, Chrome survives as an orphan holding the profile's singleton lock — the next start reaps it by pid (SIGTERM→SIGKILL), avoiding the "singleton hand-off, instant exit" path that would fail every first fetch
+- Watchdog counting semantics: 3 consecutive user closes pause the instance; automatic respawns do NOT reset the counter — only the settings page's "re-enable" (`resume()`) does, otherwise the pause would never trigger under frequent polling
 - Chrome 136+ hard constraint: `--remote-debugging-port` only works with a non-default `--user-data-dir` — one technical reason the isolated profile exists
+- CDP threat model: the debug port binds 127.0.0.1 only, and CDP itself has no authentication — any local process can take over the dedicated instance (read cookies, arbitrary evaluate). The isolated profile bounds the blast radius to scraping cookies; the settings API serves loopback Hosts only (DNS-rebinding defense) with same-origin Origin checks, and `/api/clear` requires a server-side `confirm:true`
 - Minimal dependency-free CDP client on Node's built-in WebSocket (Node ≥ 22.18)
 - Known consumer: [dsh-rss-news-flash-kuaixun](https://github.com/terry2010/dsh-rss-news-flash-kuaixun) — node-first fetch with automatic browser fallback
 

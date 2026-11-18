@@ -138,7 +138,7 @@ $('#btnClear').onclick = async () => {
   const btn = $('#btnClear')
   btn.disabled = true
   try {
-    await post('/clear')
+    await post('/clear', { confirm: true })
     toast('已清除所有数据')
     loadStatus()
   } catch (e) { toast(e.message) }

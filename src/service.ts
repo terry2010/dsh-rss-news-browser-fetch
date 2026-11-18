@@ -25,10 +25,50 @@ declare module '@deepseek-ai/cordis' {
 
 export interface BrowserFetchInit {
   method?: string
-  headers?: Record<string, string>
+  headers?: Record<string, string> | Headers | [string, string][]
   body?: string
   credentials?: 'omit' | 'same-origin' | 'include'
   referrer?: string
+}
+
+const KNOWN_INIT_KEYS = new Set(['method', 'headers', 'body', 'credentials', 'referrer'])
+
+/** init 归一化（导出供测试）：Headers 实例/键值对数组 → plain object；不认识的 key、
+ *  非 string 值显式报错——JSON.stringify 会把 Headers、AbortSignal 之类静默序列化成
+ *  {}，字段被吞后 fetch 行为漂移且难排查。 */
+export function normalizeInit(init?: BrowserFetchInit): Record<string, unknown> {
+  if (init == null) return {}
+  if (typeof init !== 'object') throw new Error('browserFetch: init must be an object')
+  for (const k of Object.keys(init)) {
+    if (!KNOWN_INIT_KEYS.has(k)) {
+      throw new Error(`browserFetch: init.${k} not supported (page-side fetch takes a JSON-safe subset: method/headers/body/credentials/referrer)`)
+    }
+  }
+  const out: Record<string, unknown> = {}
+  if (init.method != null) out.method = String(init.method)
+  if (init.credentials != null) out.credentials = init.credentials
+  if (init.referrer != null) out.referrer = String(init.referrer)
+  if (init.body != null) {
+    if (typeof init.body !== 'string') throw new Error('browserFetch: init.body must be a string (page-side serialization limit)')
+    out.body = init.body
+  }
+  if (init.headers != null) {
+    const h: Record<string, string> = {}
+    if (init.headers instanceof Headers) {
+      init.headers.forEach((v, k) => { h[k] = v })
+    } else if (Array.isArray(init.headers)) {
+      for (const [k, v] of init.headers) h[k] = v
+    } else if (typeof init.headers === 'object') {
+      for (const [k, v] of Object.entries(init.headers)) {
+        if (typeof v !== 'string') throw new Error(`browserFetch: init.headers.${k} must be a string`)
+        h[k] = v
+      }
+    } else {
+      throw new Error('browserFetch: init.headers must be a plain object, Headers, or [string, string][]')
+    }
+    out.headers = h
+  }
+  return out
 }
 
 export interface BrowserFetchResult {
@@ -60,18 +100,19 @@ export class BrowserFetchService extends Service {
     this.log = opts.log
     this.dataDir = opts.dataDir
     this.inst = new ChromeInstance({ dataDir: opts.dataDir, log: opts.log, proxyUrl: opts.proxyUrl })
-    this.pool = new TabPool(this.inst, opts.log)
+    // auth-required 域跳过漂移修复——用户可能正在 OAuth/SSO 跨域登录流程中，
+    // 此时把 tab 拽回轻量页会直接打断授权；watchdog 巡检与 ensure 的缓存修复共用这一谓词。
+    this.pool = new TabPool(this.inst, opts.log, (d) => this.authDomains.has(d.toLowerCase()))
     // 巡检：5min 一轮，修复幂等；用 ctx.effect 挂卸载清理。
-    // auth-required 域跳过漂移重置——用户可能正在 OAuth/SSO 跨域登录流程中，
-    // 此时把 tab 拽回轻量页会直接打断授权。
-    this.sweepTimer = setInterval(() => void this.pool.sweep((d) => this.authDomains.has(d)), 5 * 60_000)
+    this.sweepTimer = setInterval(() => void this.pool.sweep(), 5 * 60_000)
     this.sweepTimer.unref?.()
     ctx.effect(() => () => this.dispose(), 'browser-fetch dispose')
   }
 
-  /** 调用方先声明域——只放行声明过的域（及子域）。 */
+  /** 调用方先声明域——只放行声明过的域（精确 host）。 */
   declareDomains(caller: string, domains: string[]): void {
     const clean = domains.map((d) => d.trim().toLowerCase()).filter(Boolean)
+    for (const d of clean) validateDomainFormat(d)
     this.callers.set(caller, [...(this.callers.get(caller) ?? []), ...clean])
     for (const d of clean) this.declared.add(d)
   }
@@ -83,8 +124,9 @@ export class BrowserFetchService extends Service {
 
   /** 域的轻量同源页内执行 fetch。实例未启动时懒拉起。 */
   async fetch(domain: string, url: string, init?: BrowserFetchInit): Promise<BrowserFetchResult> {
-    this.assertAllowed(domain, url)
-    const r = await this.pool.pageFetch(domain, url, init)
+    const d = domain.trim().toLowerCase()
+    this.assertAllowed(d, url)
+    const r = await this.pool.pageFetch(d, url, normalizeInit(init))
     return { status: r.status, body: r.body }
   }
 
@@ -94,8 +136,9 @@ export class BrowserFetchService extends Service {
    * JS 挑战页/SPA 专用档（node fetch 拿到空壳或验证页时升级上来）。
    */
   async renderHtml(domain: string, url: string, opts?: { waitMs?: number }): Promise<RenderHtmlResult> {
-    this.assertAllowed(domain, url)
-    return this.pool.renderPage(domain, url, opts)
+    const d = domain.trim().toLowerCase()
+    this.assertAllowed(d, url)
+    return this.pool.renderPage(d, url, opts)
   }
 
   /** 某域当前是否需要用户授权（登录墙/验证码）——adapter 置位，源包据此标源状态。 */
@@ -112,9 +155,10 @@ export class BrowserFetchService extends Service {
 
   /** 把该域 tab 顶到前台让用户登录/过验证；返回是否成功激活。给了 url 就直接开那个授权页。 */
   async openForAuth(domain: string, url?: string): Promise<boolean> {
+    const d = domain.trim().toLowerCase()
     try {
-      if (url) { this.assertAllowed(domain, url); await this.pool.openPage(url) }
-      else await this.pool.activate(domain)
+      if (url) { this.assertAllowed(d, url); await this.pool.openPage(url) }
+      else await this.pool.activate(d)
       return true
     } catch (e) {
       this.log.warn(`openForAuth(${domain}) failed: ${(e as Error).message}`)
@@ -166,17 +210,31 @@ export class BrowserFetchService extends Service {
   }
 }
 
-/** 域白名单校验：domain 须先声明；url 的 host 须精确等于声明域。
+/** 域白名单校验：domain 须先声明；url 的 host 须精确等于声明域，且必须 https。
  *  页面 origin 就是 domain 本身——子域 fetch 本来就过不了 CORS，放行只会把
- *  「清晰报错」换成「莫名 CORS 失败」。 */
+ *  「清晰报错」换成「莫名 CORS 失败」；http 则是 https 页面里的混合内容，必被浏览器拦。 */
 export function checkAllowedUrl(declared: ReadonlySet<string>, domain: string, url: string): void {
-  let host = ''
-  try { host = new URL(url).hostname.toLowerCase() } catch { throw new Error(`browserFetch: bad url ${url}`) }
+  let u: URL
+  try { u = new URL(url) } catch { throw new Error(`browserFetch: bad url ${url}`) }
+  const host = u.hostname.toLowerCase()
   const d = domain.toLowerCase()
   if (!declared.has(d)) throw new Error(`browserFetch: domain "${domain}" not declared (call declareDomains first)`)
   if (host !== d) {
     throw new Error(`browserFetch: url host "${host}" != declared domain "${d}" (declare the API host itself; page fetch is same-origin only)`)
   }
+  if (u.protocol !== 'https:') {
+    throw new Error(`browserFetch: only https:// urls are fetchable (light page origin is https://${d}; http:// is blocked as mixed content)`)
+  }
+}
+
+/** 域格式校验（导出供测试）：只收纯 host。带 scheme/端口/路径的声明在 checkAllowedUrl 的
+ *  hostname 语义下永不匹配（URL.hostname 不含端口），提前拒绝给出清晰报错。 */
+export function validateDomainFormat(domain: string): void {
+  const d = domain.trim().toLowerCase()
+  const ok = /^\[[0-9a-f:.]+\]$/.test(d) // IPv6 字面量
+    || (/^[a-z0-9._-]+$/.test(d)
+      && !d.startsWith('.') && !d.endsWith('.') && !d.includes('..'))
+  if (!ok) throw new Error(`browserFetch: invalid domain "${domain}" — declare a bare hostname like "api.example.com" (no scheme/port/path)`)
 }
 
 /** 设置页 URL 输入消毒：空 → about:blank；只放行 http(s)/about:*；其余协议（javascript:/file:/data:）拒绝。 */

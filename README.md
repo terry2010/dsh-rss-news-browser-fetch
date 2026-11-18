@@ -57,13 +57,16 @@ export function apply(ctx: Context) {
 | `openForAuth(domain, url?)` | 把域 tab 顶到前台让用户登录/过验证 |
 | `resume()` / `status()` | 手动恢复暂停实例 / 状态查询 |
 
-服务名：`browserFetch` · apiVersion: 1
+服务名：`browserFetch` · apiVersion: 2
 
 ## 内部说明
 
 - cordis entry id：`rss-news-browser-fetch`；提供服务名 `browserFetch`
-- 数据目录：`~/.dsh/data/rss-news-browser-fetch/`（专用 Chrome profile 所在地）
+- 数据目录：`~/.dsh/rss-news-browser-fetch/`（专用 Chrome profile 所在地；设了 `DSH_HOME` 则在 `$DSH_HOME/data/` 下）
+- 实例状态 `instance.json`：记录 pid+调试端口。宿主崩溃/被杀后 Chrome 成为孤儿并占着 profile 单例锁——下次启动按它收割孤儿（SIGTERM→SIGKILL），避免「单例交接后即刻退出」让每次首抓都失败
+- watchdog 计数语义：用户连关 3 次转暂停；自动重拉不清零计数，只有设置页「重新启用」（`resume()`）清零——否则高频抓取下暂停永远触发不了
 - Chrome 136+ 硬约束：`--remote-debugging-port` 仅在非默认 `--user-data-dir` 生效——这正是独立 profile 存在的技术原因之一
+- CDP 威胁模型：调试端口仅绑 127.0.0.1 且 CDP 本身无鉴权——本机任意进程可接管该专用实例（读 cookie/任意 evaluate）。专用 profile 把爆炸半径限制在抓取 cookie 范围内；设置页 API 只服务 loopback Host（防 DNS 重绑定）+ Origin 同源校验，`/api/clear` 需服务端确认 `confirm:true`
 - 极简 CDP client：Node ≥22.18 自带 WebSocket，零依赖
 - 已知消费方：[dsh-rss-news-flash-kuaixun](https://github.com/terry2010/dsh-rss-news-flash-kuaixun)——node fetch 优先、失败自动回落浏览器通道
 
